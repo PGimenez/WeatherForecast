@@ -6,6 +6,6 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY weather_data_fetcher.py .
+COPY eda.py .
 
-CMD ["python", "weather_data_fetcher.py"]
+CMD ["python", "eda.py"]

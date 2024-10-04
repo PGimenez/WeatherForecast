@@ -6,6 +6,6 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY weather_data_fetcher.py .
+COPY process_data.py .
 
-CMD ["python", "weather_data_fetcher.py"]
+CMD ["python", "process_data.py"]
