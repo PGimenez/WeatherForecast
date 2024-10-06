@@ -75,7 +75,7 @@ plt.xlabel('City')
 plt.ylabel('Average Temperature at 2m (°C)')
 plt.title('Average Temperature by City')
 plt.tight_layout()
-plt.savefig('plots/average_temperature_by_city.png')
+plt.savefig('data/plots/average_temperature_by_city.png')
 plt.close()
 
 # 3. Distribution of Humidity
@@ -141,7 +141,7 @@ plt.ylabel('Relative Humidity at 2m (%)')
 plt.title('Temperature vs. Relative Humidity')
 plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 plt.tight_layout()
-plt.savefig('plots/temperature_vs_humidity.png')
+plt.savefig('data/plots/temperature_vs_humidity.png')
 plt.close()
 
 # 9. Monthly Average Temperature
@@ -172,7 +172,7 @@ def plot_wind_rose(city_name):
     ax.bar(wind_direction, wind_speed, normed=True, opening=0.8, edgecolor='white')
     ax.set_title(f'Wind Rose for {city_name}')
     ax.set_legend()
-    plt.savefig(f'data/plots/wind_rose_{city_name}.png')
+    plt.savefig('data/plots/wind_rose_{city_name}.png')
     plt.close()
 
 # Plot wind rose for each city
