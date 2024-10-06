@@ -153,4 +153,6 @@ plt.legend()
 plt.show()
 
 # Save the model (optional)
-model.save('models/weather_forecast_lstm.h5')
+if not os.path.exists('data/models'):
+    os.makedirs('data/models')
+model.save('data/models/weather_forecast_lstm.h5')
