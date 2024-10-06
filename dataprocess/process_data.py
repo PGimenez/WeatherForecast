@@ -76,7 +76,7 @@ print(df.describe())
 from sklearn.preprocessing import MinMaxScaler
 
 scaler = MinMaxScaler()
-df[numerical_columns] = scaler.fit_transform(df[numerical_columns])
+df[numeric_columns] = scaler.fit_transform(df[numeric_columns])
 
 # Save the processed data
 processed_csv_file = "data/all_cities_processed.csv"
