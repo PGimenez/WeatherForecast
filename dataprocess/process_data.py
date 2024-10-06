@@ -17,17 +17,21 @@ missing_values = df.isnull().sum()
 print("Missing values in each column:")
 print(missing_values)
 
-# Option 1: Drop rows with missing values
-# df = df.dropna()
+# Separate numeric and non-numeric columns
+numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+non_numeric_columns = df.select_dtypes(exclude=['float64', 'int64']).columns
 
-# Option 2: Fill missing values with mean or median
-df = df.fillna(df.mean())
+# Fill missing values for numeric columns with mean
+df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+
+# Fill missing values for non-numeric columns with mode (most frequent value)
+for col in non_numeric_columns:
+    df[col] = df[col].fillna(df[col].mode()[0])
 
 # 2. Correct data types
 # Ensure 'date' is datetime and other numerical columns are in correct format
 df['date'] = pd.to_datetime(df['date'])
-numerical_columns = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-for col in numerical_columns:
+for col in numeric_columns:
     df[col] = pd.to_numeric(df[col], errors='coerce')
 
 # 3. Remove duplicates
