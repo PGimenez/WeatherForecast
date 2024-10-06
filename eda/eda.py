@@ -5,8 +5,8 @@ import seaborn as sns
 import os
 
 # Ensure the 'plots' directory exists
-if not os.path.exists('plots'):
-    os.makedirs('plots')
+if not os.path.exists('data/plots'):
+    os.makedirs('data/plots')
 
 # Load the dataset
 csv_file = "data/all_cities.csv"
@@ -63,7 +63,7 @@ plt.xlabel('Date')
 plt.ylabel('Temperature at 2m (°C)')
 plt.title('Temperature Over Time for Each City')
 plt.legend()
-plt.savefig('plots/temperature_over_time.png')
+plt.savefig('data/plots/temperature_over_time.png')
 plt.close()
 
 # 2. Average Temperature by City
@@ -83,7 +83,7 @@ plt.figure(figsize=(12, 6))
 sns.histplot(data=df, x='relative_humidity_2m', bins=30, kde=True)
 plt.xlabel('Relative Humidity at 2m (%)')
 plt.title('Distribution of Relative Humidity')
-plt.savefig('plots/humidity_distribution.png')
+plt.savefig('data/plots/humidity_distribution.png')
 plt.close()
 
 # 4. Correlation Heatmap
@@ -97,7 +97,7 @@ plt.figure(figsize=(10, 8))
 sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm')
 plt.title('Correlation Heatmap of Selected Variables')
 plt.tight_layout()
-plt.savefig('plots/correlation_heatmap.png')
+plt.savefig('data/plots/correlation_heatmap.png')
 plt.close()
 
 # 5. Boxplot of Temperature by City
@@ -108,7 +108,7 @@ plt.xlabel('City')
 plt.ylabel('Temperature at 2m (°C)')
 plt.title('Temperature Distribution by City')
 plt.tight_layout()
-plt.savefig('plots/temperature_boxplot_by_city.png')
+plt.savefig('data/plots/temperature_boxplot_by_city.png')
 plt.close()
 
 # 6. Wind Speed Distribution
@@ -118,7 +118,7 @@ for city in df['city'].unique():
 plt.xlabel('Wind Speed at 10m (m/s)')
 plt.title('Wind Speed Distribution by City')
 plt.legend()
-plt.savefig('plots/wind_speed_distribution.png')
+plt.savefig('data/plots/wind_speed_distribution.png')
 plt.close()
 
 # 7. Time Series of Precipitation
@@ -130,7 +130,7 @@ plt.xlabel('Date')
 plt.ylabel('Cumulative Precipitation (mm)')
 plt.title('Cumulative Precipitation Over Time')
 plt.legend()
-plt.savefig('plots/cumulative_precipitation.png')
+plt.savefig('data/plots/cumulative_precipitation.png')
 plt.close()
 
 # 8. Scatter Plot of Temperature vs. Humidity
@@ -155,7 +155,7 @@ plt.ylabel('Average Temperature at 2m (°C)')
 plt.title('Monthly Average Temperature by City')
 plt.xticks(rotation=45)
 plt.tight_layout()
-plt.savefig('plots/monthly_average_temperature.png')
+plt.savefig('data/plots/monthly_average_temperature.png')
 plt.close()
 
 # 10. Wind Rose Plot (Optional)
@@ -172,7 +172,7 @@ def plot_wind_rose(city_name):
     ax.bar(wind_direction, wind_speed, normed=True, opening=0.8, edgecolor='white')
     ax.set_title(f'Wind Rose for {city_name}')
     ax.set_legend()
-    plt.savefig(f'plots/wind_rose_{city_name}.png')
+    plt.savefig(f'data/plots/wind_rose_{city_name}.png')
     plt.close()
 
 # Plot wind rose for each city
