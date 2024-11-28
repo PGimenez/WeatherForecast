@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import mlflow
+from datetime import datetime
 
 # Load the dataset
 csv_file = "data/all_cities.csv"
@@ -9,6 +11,10 @@ if os.path.exists(csv_file):
     df = pd.read_csv(csv_file, parse_dates=['date'])
 else:
     raise FileNotFoundError(f"{csv_file} does not exist.")
+
+# Add MLflow setup
+mlflow.set_tracking_uri(uri="http://mlflow.carryall.local:80")
+mlflow.set_experiment("MLflow Quickstart 2")
 
 # Data Cleaning
 
@@ -104,3 +110,68 @@ print(f"Scaler saved to {scaler_filename}")
 processed_csv_file = "data/all_cities_processed.csv"
 df.to_csv(processed_csv_file, index=False)
 print(f"Processed data saved to {processed_csv_file}.")
+
+run_name = f"data-processing-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+with mlflow.start_run(run_name=run_name):
+    # Log input dataset info
+    mlflow.log_params({
+        "input_file": csv_file,
+        "initial_rows": len(df),
+        "initial_columns": len(df.columns),
+        "data_start_date": df['date'].min().strftime('%Y-%m-%d'),
+        "data_end_date": df['date'].max().strftime('%Y-%m-%d'),
+        "num_cities": len(df['city'].unique())
+    })
+    
+    # Log missing values info
+    missing_values = df.isnull().sum()
+    mlflow.log_metrics({
+        f"initial_missing_values_{col}": val 
+        for col, val in missing_values.items()
+    })
+    
+    # Log duplicate removal results
+    mlflow.log_metrics({
+        "initial_row_count": initial_row_count,
+        "final_row_count": final_row_count,
+        "duplicates_removed": initial_row_count - final_row_count,
+        "duplicate_removal_percentage": ((initial_row_count - final_row_count) / initial_row_count) * 100
+    })
+    
+    # Log feature engineering info
+    mlflow.log_params({
+        "numeric_columns": list(numeric_columns),
+        "non_numeric_columns": list(non_numeric_columns),
+        "scaled_columns": numeric_columns_to_scale,
+        "feature_engineering_steps": [
+            "days_since_start",
+            "cyclical_month",
+            "cyclical_day_of_year",
+            "month"
+        ]
+    })
+    
+    # Log data statistics
+    stats = df.describe()
+    for col in numeric_columns_to_scale:
+        mlflow.log_metrics({
+            f"{col}_mean": stats[col]['mean'],
+            f"{col}_std": stats[col]['std'],
+            f"{col}_min": stats[col]['min'],
+            f"{col}_max": stats[col]['max']
+        })
+    
+    # Log final dataset info
+    mlflow.log_params({
+        "final_rows": len(df),
+        "final_columns": len(df.columns),
+        "output_file": processed_csv_file
+    })
+    
+    # Log any remaining missing values
+    final_missing_values = df.isnull().sum()
+    mlflow.log_metrics({
+        f"final_missing_values_{col}": val 
+        for col, val in final_missing_values.items()
+    })

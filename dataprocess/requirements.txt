@@ -4,3 +4,4 @@ retry_requests
 pandas
 numpy
 scikit-learn
+mlflow
