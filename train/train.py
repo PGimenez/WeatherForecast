@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime
 import warnings
+import joblib
 warnings.filterwarnings('ignore')
 
+from sklearn.preprocessing import MinMaxScaler
 # For reproducibility
 np.random.seed(42)
 
@@ -15,6 +17,9 @@ if os.path.exists(csv_file):
     df = pd.read_csv(csv_file, parse_dates=['date'])
 else:
     raise FileNotFoundError(f"{csv_file} does not exist.")
+
+if not os.path.exists('data/plots'):
+    os.makedirs('data/plots')
 
 # Select data for Barcelona
 city_name = 'Barcelona'
@@ -29,34 +34,36 @@ city_data.dropna(inplace=True)
 if 'precipitation_probability' not in city_data.columns:
     city_data['precipitation_probability'] = np.where(city_data['precipitation'] > 0, 1, 0)
 
+# Load the saved scaler
+scalers_dir = "data/scalers/"
+scaler_filename = os.path.join(scalers_dir, "minmax_scaler.joblib")
+feature_scaler = joblib.load(scaler_filename)
+
+# Remove the feature scaling step since data is already scaled
+# city_data[features] = feature_scaler.fit_transform(city_data[features])
+
+
 # Features and targets
 features = [
-    'temperature_2m',
-    'relative_humidity_2m',
-    'dew_point_2m',
-    'apparent_temperature',
-    'precipitation',
-    'wind_speed_10m',
-    'pressure_msl',
-    'cloud_cover',
-]
-features = [
-    "relative_humidity_2m", "dew_point_2m", "apparent_temperature",
+    "temperature_2m", "relative_humidity_2m", "dew_point_2m", "apparent_temperature",
     "precipitation", "rain", "snowfall", "snow_depth", "weather_code", "pressure_msl",
     "surface_pressure", "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
     "et0_fao_evapotranspiration", "vapour_pressure_deficit", "wind_speed_10m", "wind_speed_100m",
     "wind_direction_10m", "wind_direction_100m", "wind_gusts_10m", "soil_temperature_0_to_7cm",
     "soil_temperature_7_to_28cm", "soil_temperature_28_to_100cm", "soil_temperature_100_to_255cm",
     "soil_moisture_0_to_7cm", "soil_moisture_7_to_28cm", "soil_moisture_28_to_100cm",
-    "soil_moisture_100_to_255cm"
+    "soil_moisture_100_to_255cm",
+    # Add the new date-related features
+    "days_since_start", "month_sin", "month_cos", "day_of_year_sin", "day_of_year_cos", "month"
 ]
 targets = ['temperature_2m', 'precipitation_probability']
 
-from sklearn.preprocessing import MinMaxScaler
-feature_scaler = MinMaxScaler()
+# Only scale the target variables
 target_scaler = MinMaxScaler()
-city_data[features] = feature_scaler.fit_transform(city_data[features])
 city_data[targets] = target_scaler.fit_transform(city_data[targets])
+target_scaler_filename = os.path.join(scalers_dir, "target_scaler.joblib")
+joblib.dump(target_scaler, target_scaler_filename)
+print(f"Target scaler saved to {target_scaler_filename}")
 
 # Create sequences
 def create_sequences(data, features, targets, time_steps=24):
@@ -106,7 +113,8 @@ plt.title('Model Loss During Training')
 plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend()
-plt.show()
+plt.savefig('data/plots/train_loss.png')
+plt.close()
 
 # Predictions
 y_pred = model.predict(X_test)
@@ -140,7 +148,8 @@ plt.title('Temperature Prediction vs Actual')
 plt.xlabel('Time Steps')
 plt.ylabel('Temperature (°C)')
 plt.legend()
-plt.show()
+plt.savefig('data/plots/temperature_prediction.png')
+plt.close()
 
 # Plot Precipitation Probability Predictions
 plt.figure(figsize=(15, 6))
@@ -150,7 +159,8 @@ plt.title('Precipitation Probability Prediction vs Actual')
 plt.xlabel('Time Steps')
 plt.ylabel('Precipitation Probability')
 plt.legend()
-plt.show()
+plt.savefig('data/plots/precipitation_probability_predictions.png')
+plt.close()
 
 # Save the model (optional)
 if not os.path.exists('data/models'):

@@ -172,7 +172,7 @@ def plot_wind_rose(city_name):
     ax.bar(wind_direction, wind_speed, normed=True, opening=0.8, edgecolor='white')
     ax.set_title(f'Wind Rose for {city_name}')
     ax.set_legend()
-    plt.savefig('data/plots/wind_rose_{city_name}.png')
+    plt.savefig(f'data/plots/wind_rose_{city_name}.png')
     plt.close()
 
 # Plot wind rose for each city

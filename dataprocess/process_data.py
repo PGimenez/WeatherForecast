@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import joblib
 
 # Load the dataset
 csv_file = "data/all_cities.csv"
@@ -20,6 +21,8 @@ print(missing_values)
 # Separate numeric and non-numeric columns
 numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
 non_numeric_columns = df.select_dtypes(exclude=['float64', 'int64']).columns
+print(f"Numeric columns: {numeric_columns}")
+print(f"Non-numeric columns: {non_numeric_columns}")
 
 # Fill missing values for numeric columns with mean
 df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
@@ -41,6 +44,15 @@ final_row_count = df.shape[0]
 print(f"Removed {initial_row_count - final_row_count} duplicate rows.")
 
 # Feature Engineering
+
+# Convert date to numerical format
+df['days_since_start'] = (df['date'] - df['date'].min()).dt.days
+
+# Create cyclical features for month and day of year
+df['month_sin'] = np.sin(2 * np.pi * df['date'].dt.month / 12)
+df['month_cos'] = np.cos(2 * np.pi * df['date'].dt.month / 12)
+df['day_of_year_sin'] = np.sin(2 * np.pi * df['date'].dt.dayofyear / 365.25)
+df['day_of_year_cos'] = np.cos(2 * np.pi * df['date'].dt.dayofyear / 365.25)
 
 # Example: Encode 'weather_code' as categorical variable
 # if 'weather_code' in df.columns:
@@ -75,8 +87,18 @@ print(df.describe())
 # Example: Normalize numerical features
 from sklearn.preprocessing import MinMaxScaler
 
+# Create the scalers directory if it doesn't exist
+scalers_dir = "data/scalers/"
+os.makedirs(scalers_dir, exist_ok=True)
+
 scaler = MinMaxScaler()
-df[numeric_columns] = scaler.fit_transform(df[numeric_columns])
+numeric_columns_to_scale = [col for col in numeric_columns if col not in ['days_since_start', 'month_sin', 'month_cos', 'day_of_year_sin', 'day_of_year_cos']]
+df[numeric_columns_to_scale] = scaler.fit_transform(df[numeric_columns_to_scale])
+
+# Save the scaler
+scaler_filename = os.path.join(scalers_dir, "minmax_scaler.joblib")
+joblib.dump(scaler, scaler_filename)
+print(f"Scaler saved to {scaler_filename}")
 
 # Save the processed data
 processed_csv_file = "data/all_cities_processed.csv"
