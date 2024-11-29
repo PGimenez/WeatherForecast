@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: train-pipeline
+  namespace: user-pgimenez
+spec:
+  serviceAccountName: user-pgimenez
+  imagePullSecrets:
+  - name: github-registry-secret
+  entrypoint: main
+  templates:
+  - name: main
+    steps:
+    - - name: process
+        template: process
+    - - name: eda
+        template: eda
+    - - name: train
+        template: train
+
+  - name: process
+    container:
+      name: weather-process-data
+      image: ghcr.io/pgimenez/dataprocess:latest
+      command: ["python", "process_data.py"]
+      volumeMounts:
+      - name: data-volume
+        mountPath: /app/data
+        subPath: weather/
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+
+  - name: eda
+    container:
+      name: weather-eda
+      image: ghcr.io/pgimenez/eda:latest
+      command: ["python", "eda.py"]
+      volumeMounts:
+      - name: data-volume
+        mountPath: /app/data
+        subPath: weather/
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+        limits:
+          memory: "1Gi"
+          cpu: "500m"
+
+  - name: train
+    container:
+      name: weather-train
+      image: ghcr.io/pgimenez/train:latest
+      command: ["python", "train.py"]
+      volumeMounts:
+      - name: data-volume
+        mountPath: /app/data
+        subPath: weather/
+      resources:
+        requests:
+          memory: "2Gi"
+          cpu: "1"
+        limits:
+          memory: "4Gi"
+          cpu: "2"
+
+  volumes:
+  - name: data-volume
+    persistentVolumeClaim:
+      claimName: data
