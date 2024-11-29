@@ -82,8 +82,16 @@ def create_sequences(data, features, targets, time_steps=24):
 TIME_STEPS = 24
 X, y = create_sequences(city_data, features, targets, TIME_STEPS)
 
+# Network Parameters
+TRAIN_SIZE = 0.8
+LSTM_UNITS = 64
+DENSE_UNITS = 32
+DROPOUT_RATE = 0.2
+BATCH_SIZE = 32
+EPOCHS = 20
+
 # Split data
-train_size = int(len(X) * 0.8)
+train_size = int(len(X) * TRAIN_SIZE)
 X_train, X_test = X[:train_size], X[train_size:]
 y_train, y_test = y[:train_size], y[train_size:]
 
@@ -93,9 +101,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
 
 model = Sequential()
-model.add(LSTM(units=64, input_shape=(X_train.shape[1], X_train.shape[2])))
-model.add(Dropout(0.2))
-model.add(Dense(units=32, activation='relu'))
+model.add(LSTM(units=LSTM_UNITS, input_shape=(X_train.shape[1], X_train.shape[2])))
+model.add(Dropout(DROPOUT_RATE))
+model.add(Dense(units=DENSE_UNITS, activation='relu'))
 model.add(Dense(units=y_train.shape[1]))
 
 model.compile(optimizer='adam', loss='mean_squared_error')
@@ -109,12 +117,12 @@ with mlflow.start_run(run_name=run_name):
     mlflow.log_params({
         "city": city_name,
         "time_steps": TIME_STEPS,
-        "train_size": 0.8,
-        "lstm_units": 64,
-        "dense_units": 32,
-        "dropout_rate": 0.2,
-        "batch_size": 32,
-        "epochs": 20,
+        "train_size": TRAIN_SIZE,
+        "lstm_units": LSTM_UNITS,
+        "dense_units": DENSE_UNITS,
+        "dropout_rate": DROPOUT_RATE,
+        "batch_size": BATCH_SIZE,
+        "epochs": EPOCHS,
         "features": features,
         "targets": targets
     })
@@ -122,8 +130,8 @@ with mlflow.start_run(run_name=run_name):
     # Train model and generate predictions
     history = model.fit(
         X_train, y_train,
-        epochs=20,
-        batch_size=32,
+        epochs=EPOCHS,
+        batch_size=BATCH_SIZE,
         validation_data=(X_test, y_test),
         verbose=1
     )
@@ -133,13 +141,16 @@ with mlflow.start_run(run_name=run_name):
     y_test_inv = target_scaler.inverse_transform(y_test)
     y_pred_inv = target_scaler.inverse_transform(y_pred)
     
-    # Calculate metrics for both targets
+    # Calculate temperature metrics
+    mse_temp = mean_squared_error(y_test_inv[:, 0], y_pred_inv[:, 0])
+    mae_temp = mean_absolute_error(y_test_inv[:, 0], y_pred_inv[:, 0])
+    r2_temp = r2_score(y_test_inv[:, 0], y_pred_inv[:, 0])
+    
+    # Calculate precipitation metrics
     y_test_precip = y_test_inv[:, 1] >= 0.5
     y_pred_precip = y_pred_inv[:, 1] >= 0.5
     
-    from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
-    
-    # Log all metrics
+    # Now log all metrics after they're calculated
     mlflow.log_metrics({
         # Training metrics
         "final_train_loss": history.history['loss'][-1],
