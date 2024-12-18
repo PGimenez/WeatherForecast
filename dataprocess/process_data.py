@@ -114,10 +114,10 @@ print(f"Processed data saved to {processed_csv_file}.")
 run_name = f"data-processing-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 with mlflow.start_run(run_name=run_name):
-    # Log basic parameters (keep these as regular params since they're important)
+    # Log basic parameters
     mlflow.log_params({
         "input_file": csv_file,
-        "initial_rows": len(df),
+        "initial_rows": initial_row_count,
         "initial_columns": len(df.columns),
         "data_start_date": df['date'].min().strftime('%Y-%m-%d'),
         "data_end_date": df['date'].max().strftime('%Y-%m-%d'),
@@ -128,17 +128,24 @@ with mlflow.start_run(run_name=run_name):
     metrics_dir = "temp_metrics"
     os.makedirs(metrics_dir, exist_ok=True)
     
-    # Save missing values to CSV
+    # Save missing values to CSV - Fixed to ensure arrays have same length
+    missing_values_before = missing_values
+    missing_values_after = df.isnull().sum()
+    
+    # Ensure we're using the same index for both
+    all_columns = sorted(set(missing_values_before.index) | set(missing_values_after.index))
+    
     missing_values_df = pd.DataFrame({
-        'column': missing_values.index,
-        'initial_missing_values': missing_values.values,
-        'final_missing_values': df.isnull().sum().values
+        'column': all_columns,
+        'initial_missing_values': [missing_values_before.get(col, 0) for col in all_columns],
+        'final_missing_values': [missing_values_after.get(col, 0) for col in all_columns]
     })
+    
     missing_values_path = os.path.join(metrics_dir, "missing_values.csv")
     missing_values_df.to_csv(missing_values_path, index=False)
     mlflow.log_artifact(missing_values_path, "missing_values")
     
-    # Log duplicate removal metrics (keep these as regular metrics since they're important summary stats)
+    # Log duplicate removal metrics
     mlflow.log_metrics({
         "initial_row_count": initial_row_count,
         "final_row_count": final_row_count,
