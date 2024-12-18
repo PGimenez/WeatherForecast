@@ -1,27 +1,43 @@
 import os
 import numpy as np
 import pandas as pd
-from flask import Flask, request, jsonify, abort
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
 import joblib
 from datetime import datetime, timedelta
+from typing import List
+from fastapi.middleware.cors import CORSMiddleware
+import shutil
+from fastapi.responses import FileResponse
+import tempfile
+from pathlib import Path
 
-app = Flask(__name__)
+app = FastAPI()
+
+# Update the CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load the trained model
-model_path = 'data/models/weather_forecast_lstm.h5'
+model_path = "data/models/weather_forecast_lstm.h5"
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Model file not found: {model_path}")
 model = load_model(model_path)
 
 # Load the scaler
-scaler_path = 'data/scalers/minmax_scaler.joblib'
+scaler_path = "data/scalers/minmax_scaler.joblib"
 if not os.path.exists(scaler_path):
     raise FileNotFoundError(f"Scaler file not found: {scaler_path}")
 feature_scaler = joblib.load(scaler_path)
 
-target_scaler_path = 'data/scalers/target_scaler.joblib'
+target_scaler_path = "data/scalers/target_scaler.joblib"
 if not os.path.exists(target_scaler_path):
     raise FileNotFoundError(f"Target scaler file not found: {target_scaler_path}")
 target_scaler = joblib.load(target_scaler_path)
@@ -30,120 +46,231 @@ target_scaler = joblib.load(target_scaler_path)
 csv_file = "data/all_cities_processed.csv"
 if not os.path.exists(csv_file):
     raise FileNotFoundError(f"{csv_file} does not exist.")
-df = pd.read_csv(csv_file, parse_dates=['date'])
+df = pd.read_csv(csv_file, parse_dates=["date"])
 
-# Update the features list to match the processed data
+# Features lists remain the same
 features = [
-    "temperature_2m", "relative_humidity_2m", "dew_point_2m", "apparent_temperature",
-    "precipitation", "rain", "snowfall", "snow_depth", "weather_code", "pressure_msl",
-    "surface_pressure", "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
-    "et0_fao_evapotranspiration", "vapour_pressure_deficit", "wind_speed_10m", "wind_speed_100m",
-    "wind_direction_10m", "wind_direction_100m", "wind_gusts_10m", "soil_temperature_0_to_7cm",
-    "soil_temperature_7_to_28cm", "soil_temperature_28_to_100cm", "soil_temperature_100_to_255cm",
-    "soil_moisture_0_to_7cm", "soil_moisture_7_to_28cm", "soil_moisture_28_to_100cm",
-    "soil_moisture_100_to_255cm"
+    "temperature_2m",
+    "relative_humidity_2m",
+    "dew_point_2m",
+    "apparent_temperature",
+    "precipitation",
+    "rain",
+    "snowfall",
+    "snow_depth",
+    "weather_code",
+    "pressure_msl",
+    "surface_pressure",
+    "cloud_cover",
+    "cloud_cover_low",
+    "cloud_cover_mid",
+    "cloud_cover_high",
+    "et0_fao_evapotranspiration",
+    "vapour_pressure_deficit",
+    "wind_speed_10m",
+    "wind_speed_100m",
+    "wind_direction_10m",
+    "wind_direction_100m",
+    "wind_gusts_10m",
+    "soil_temperature_0_to_7cm",
+    "soil_temperature_7_to_28cm",
+    "soil_temperature_28_to_100cm",
+    "soil_temperature_100_to_255cm",
+    "soil_moisture_0_to_7cm",
+    "soil_moisture_7_to_28cm",
+    "soil_moisture_28_to_100cm",
+    "soil_moisture_100_to_255cm",
 ]
-
-# Add date-related features separately
-date_features = ['days_since_start', 'month_sin', 'month_cos', 'day_of_year_sin', 'day_of_year_cos', 'month']
 
 TIME_STEPS = 24
 
+
+# Pydantic models for request/response validation
+class PredictionRequest(BaseModel):
+    start_date: str
+    end_date: str
+    city: str
+
+
+class PredictionResponse(BaseModel):
+    dates: List[str]
+    temperature: List[float]
+    precipitation: List[float]
+    actual_temperature: List[float]
+    actual_precipitation: List[float]
+
+
+class DataInfoResponse(BaseModel):
+    city: str
+    total_datapoints: int
+    date_range: dict
+    last_datapoint: dict
+
+
+# Helper functions remain the same
 def create_sequences(data, time_steps=TIME_STEPS):
     X = []
     for i in range(len(data) - time_steps + 1):
-        X.append(data[i:(i + time_steps)])
+        X.append(data[i : (i + time_steps)])
     return np.array(X)
 
-def add_date_features(data):
-    data['days_since_start'] = (data['date'] - data['date'].min()).dt.days
-    data['month_sin'] = np.sin(2 * np.pi * data['date'].dt.month / 12)
-    data['month_cos'] = np.cos(2 * np.pi * data['date'].dt.month / 12)
-    data['day_of_year_sin'] = np.sin(2 * np.pi * data['date'].dt.dayofyear / 365.25)
-    data['day_of_year_cos'] = np.cos(2 * np.pi * data['date'].dt.dayofyear / 365.25)
-    data['month'] = data['date'].dt.month
-    return data
 
-@app.route('/predict', methods=['POST'])
-def predict():
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(request: PredictionRequest):
     try:
-        # Get input data from the request
-        start_date = request.json['start_date']
-        end_date = request.json['end_date']
-        city = request.json['city']
-        
         # Convert dates to datetime objects (timezone-naive)
-        start_date = pd.to_datetime(start_date).tz_localize(None)
-        end_date = pd.to_datetime(end_date).tz_localize(None)
-        
+        start_date = pd.to_datetime(request.start_date).tz_localize(None)
+        end_date = pd.to_datetime(request.end_date).tz_localize(None)
+
         # Ensure df['date'] is timezone-naive
-        df['date'] = df['date'].dt.tz_localize(None)
-        
+        df["date"] = df["date"].dt.tz_localize(None)
+
         # Filter data for the specified city and date range
-        city_data = df[(df['city'] == city) & (df['date'] >= start_date) & (df['date'] <= end_date)]
-        
+        city_data = df[
+            (df["city"] == request.city)
+            & (df["date"] >= start_date)
+            & (df["date"] <= end_date)
+        ]
+
         if len(city_data) < TIME_STEPS:
-            return jsonify({'error': 'Not enough data for the specified date range'}), 400
-        
-        # Add date features
-        city_data = add_date_features(city_data)
-        
-        # Prepare input data
-        input_data_features = city_data[features+date_features].copy()
-        
+            raise HTTPException(
+                status_code=400, detail="Not enough data for the specified date range"
+            )
+
+        # Prepare input data - use only weather features
+        input_data_features = city_data[features].copy()
+
         # Prepare sequences
-        input_sequences = create_sequences(input_data_features.values, time_steps=TIME_STEPS)
-        
+        input_sequences = create_sequences(
+            input_data_features.values, time_steps=TIME_STEPS
+        )
+
         # Make predictions
         predictions = model.predict(input_sequences)
+
+        # Create arrays with the same shape as the feature set for predictions
+        pred_array = np.zeros((len(predictions), len(features)))
+        temp_index = features.index('temperature_2m')
+        precip_index = features.index('precipitation')
         
-        # Inverse transform predictions using target_scaler
-        predictions_inv = target_scaler.inverse_transform(predictions)
+        # Put predictions in the correct columns
+        pred_array[:, temp_index] = predictions[:, 0]  # temperature predictions
+        pred_array[:, precip_index] = predictions[:, 1]  # precipitation predictions
         
-        # Prepare the response
-        response = {
-            'dates': city_data['date'].iloc[TIME_STEPS-1:].dt.strftime('%Y-%m-%d').tolist(),
-            'temperature': predictions_inv[:, 0].tolist(),
-            'precipitation_probability': predictions_inv[:, 1].tolist()
+        # Inverse transform predictions
+        predictions_inv = feature_scaler.inverse_transform(pred_array)
+        predicted_temp = predictions_inv[:, temp_index].tolist()
+        predicted_precip = predictions_inv[:, precip_index].tolist()
+
+        # Handle actual values (as before)
+        actual_temp = city_data['temperature_2m'].iloc[TIME_STEPS-1:].values
+        actual_precip = city_data['precipitation'].iloc[TIME_STEPS-1:].values
+
+        # Create arrays with the same shape as the feature set
+        temp_array = np.zeros((len(actual_temp), len(features)))
+        precip_array = np.zeros((len(actual_precip), len(features)))
+        
+        temp_array[:, temp_index] = actual_temp
+        precip_array[:, precip_index] = actual_precip
+
+        # Inverse transform actual values
+        actual_temp = feature_scaler.inverse_transform(temp_array)[:, temp_index].tolist()
+        actual_precip = feature_scaler.inverse_transform(precip_array)[:, precip_index].tolist()
+
+        return {
+            "dates": city_data["date"]
+            .iloc[TIME_STEPS - 1 :]
+            .dt.strftime("%Y-%m-%d %H:00:00")
+            .tolist(),
+            "temperature": predicted_temp,
+            "precipitation": predicted_precip,
+            "actual_temperature": actual_temp,
+            "actual_precipitation": actual_precip
         }
-        
-        return jsonify(response)
-    
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        raise HTTPException(status_code=400, detail=str(e))
 
-@app.route('/data_info', methods=['GET'])
-def data_info():
+
+@app.get("/data_info", response_model=DataInfoResponse)
+async def data_info(city: str):
     try:
-        city = request.args.get('city')
         if not city:
-            abort(400, description="City parameter is required")
+            raise HTTPException(status_code=400, detail="City parameter is required")
 
-        city_data = df[df['city'] == city]
-        
+        city_data = df[df["city"] == city]
+
         if city_data.empty:
-            abort(404, description=f"No data found for city: {city}")
+            raise HTTPException(
+                status_code=404, detail=f"No data found for city: {city}"
+            )
 
         last_datapoint = city_data.iloc[-1]
-        
-        response = {
-            'city': city,
-            'total_datapoints': len(city_data),
-            'date_range': {
-                'start': city_data['date'].min().strftime('%Y-%m-%d'),
-                'end': city_data['date'].max().strftime('%Y-%m-%d')
-            },
-            'last_datapoint': {
-                'date': last_datapoint['date'].strftime('%Y-%m-%d'),
-                'temperature': float(last_datapoint['temperature_2m']),
-                'precipitation': float(last_datapoint['precipitation'])
-            }
-        }
-        
-        return jsonify(response)
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8000)
+        return {
+            "city": city,
+            "total_datapoints": len(city_data),
+            "date_range": {
+                "start": city_data["date"].min().strftime("%Y-%m-%d"),
+                "end": city_data["date"].max().strftime("%Y-%m-%d"),
+            },
+            "last_datapoint": {
+                "date": last_datapoint["date"].strftime("%Y-%m-%d"),
+                "temperature": float(last_datapoint["temperature_2m"]),
+                "precipitation": float(last_datapoint["precipitation"]),
+            },
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/download-data")
+async def download_data():
+    """Download the entire data folder as a zip file"""
+    try:
+        # Create temporary file with a context manager
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Create zip file path
+            zip_path = Path(temp_dir) / "weather_data.zip"
+            
+            # Create zip file from data directory
+            data_path = Path("data")
+            shutil.make_archive(
+                str(zip_path.with_suffix('')),  # Remove .zip as make_archive adds it
+                'zip',
+                data_path
+            )
+            
+            # Return the zip file
+            return FileResponse(
+                zip_path,
+                media_type='application/zip',
+                filename='weather_data.zip',
+                headers={
+                    "Content-Disposition": "attachment; filename=weather_data.zip"
+                },
+                background=None  # Prevent background task from deleting file too early
+            )
+        except Exception as e:
+            # Clean up temp directory if something goes wrong
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise e
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creating zip file: {str(e)}"
+        )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "serve:app",  # Use string reference instead of app instance
+        host="0.0.0.0", 
+        port=8000,
+        reload=True  # Enable auto-reload
+    )

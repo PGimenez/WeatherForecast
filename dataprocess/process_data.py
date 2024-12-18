@@ -114,7 +114,7 @@ print(f"Processed data saved to {processed_csv_file}.")
 run_name = f"data-processing-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 with mlflow.start_run(run_name=run_name):
-    # Log input dataset info
+    # Log basic parameters (keep these as regular params since they're important)
     mlflow.log_params({
         "input_file": csv_file,
         "initial_rows": len(df),
@@ -124,14 +124,21 @@ with mlflow.start_run(run_name=run_name):
         "num_cities": len(df['city'].unique())
     })
     
-    # Log missing values info
-    missing_values = df.isnull().sum()
-    mlflow.log_metrics({
-        f"initial_missing_values_{col}": val 
-        for col, val in missing_values.items()
-    })
+    # Create temporary CSV files for detailed metrics
+    metrics_dir = "temp_metrics"
+    os.makedirs(metrics_dir, exist_ok=True)
     
-    # Log duplicate removal results
+    # Save missing values to CSV
+    missing_values_df = pd.DataFrame({
+        'column': missing_values.index,
+        'initial_missing_values': missing_values.values,
+        'final_missing_values': df.isnull().sum().values
+    })
+    missing_values_path = os.path.join(metrics_dir, "missing_values.csv")
+    missing_values_df.to_csv(missing_values_path, index=False)
+    mlflow.log_artifact(missing_values_path, "missing_values")
+    
+    # Log duplicate removal metrics (keep these as regular metrics since they're important summary stats)
     mlflow.log_metrics({
         "initial_row_count": initial_row_count,
         "final_row_count": final_row_count,
@@ -139,7 +146,13 @@ with mlflow.start_run(run_name=run_name):
         "duplicate_removal_percentage": ((initial_row_count - final_row_count) / initial_row_count) * 100
     })
     
-    # Log feature engineering info
+    # Save column statistics to CSV
+    stats_df = df[numeric_columns_to_scale].describe()
+    stats_path = os.path.join(metrics_dir, "column_statistics.csv")
+    stats_df.to_csv(stats_path)
+    mlflow.log_artifact(stats_path, "statistics")
+    
+    # Log feature engineering params
     mlflow.log_params({
         "numeric_columns": list(numeric_columns),
         "non_numeric_columns": list(non_numeric_columns),
@@ -152,16 +165,6 @@ with mlflow.start_run(run_name=run_name):
         ]
     })
     
-    # Log data statistics
-    stats = df.describe()
-    for col in numeric_columns_to_scale:
-        mlflow.log_metrics({
-            f"{col}_mean": stats[col]['mean'],
-            f"{col}_std": stats[col]['std'],
-            f"{col}_min": stats[col]['min'],
-            f"{col}_max": stats[col]['max']
-        })
-    
     # Log final dataset info
     mlflow.log_params({
         "final_rows": len(df),
@@ -169,9 +172,6 @@ with mlflow.start_run(run_name=run_name):
         "output_file": processed_csv_file
     })
     
-    # Log any remaining missing values
-    final_missing_values = df.isnull().sum()
-    mlflow.log_metrics({
-        f"final_missing_values_{col}": val 
-        for col, val in final_missing_values.items()
-    })
+    # Clean up temporary directory
+    import shutil
+    shutil.rmtree(metrics_dir)

@@ -1,1 +1,69 @@
-data
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Vue/Node
+.DS_Store
+node_modules
+frontend/dist
+frontend/.env.local
+frontend/.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Project specific
+data/
+!data/.gitkeep
+mlruns/
+models/
+*.h5
+*.joblib
+*.pkl
+*.zip
+
+# Temporary files
+*.tmp
+.coverage
+htmlcov/
+.pytest_cache/

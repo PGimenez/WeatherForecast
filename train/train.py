@@ -6,6 +6,20 @@ from datetime import datetime
 import warnings
 import joblib
 import mlflow
+from sklearn.metrics import (
+    mean_squared_error, 
+    mean_absolute_error, 
+    r2_score, 
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    classification_report
+)
+from mlflow.models.signature import infer_signature
+import json
+import tempfile
+import os
 warnings.filterwarnings('ignore')
 
 from sklearn.preprocessing import MinMaxScaler
@@ -35,10 +49,6 @@ city_data.reset_index(drop=True, inplace=True)
 # Check for missing values
 city_data.dropna(inplace=True)
 
-# Create 'precipitation_probability' if not present
-if 'precipitation_probability' not in city_data.columns:
-    city_data['precipitation_probability'] = np.where(city_data['precipitation'] > 0, 1, 0)
-
 # Load the saved scaler
 scalers_dir = "data/scalers/"
 scaler_filename = os.path.join(scalers_dir, "minmax_scaler.joblib")
@@ -46,7 +56,6 @@ feature_scaler = joblib.load(scaler_filename)
 
 # Remove the feature scaling step since data is already scaled
 # city_data[features] = feature_scaler.fit_transform(city_data[features])
-
 
 # Features and targets
 features = [
@@ -57,29 +66,50 @@ features = [
     "wind_direction_10m", "wind_direction_100m", "wind_gusts_10m", "soil_temperature_0_to_7cm",
     "soil_temperature_7_to_28cm", "soil_temperature_28_to_100cm", "soil_temperature_100_to_255cm",
     "soil_moisture_0_to_7cm", "soil_moisture_7_to_28cm", "soil_moisture_28_to_100cm",
-    "soil_moisture_100_to_255cm",
-    # Add the new date-related features
-    "days_since_start", "month_sin", "month_cos", "day_of_year_sin", "day_of_year_cos", "month"
+    "soil_moisture_100_to_255cm"
 ]
-targets = ['temperature_2m', 'precipitation_probability']
+
+targets = ['temperature_2m', 'precipitation']
+
+# Scale all features together
+all_features = features
+feature_scaler = MinMaxScaler()
+feature_data = city_data[features].values
+scaled_features = feature_scaler.fit_transform(feature_data)
+# Assign back to dataframe
+for i, feature in enumerate(features):
+    city_data[feature] = scaled_features[:, i]
+joblib.dump(feature_scaler, scaler_filename)
+print(f"Feature scaler saved to {scaler_filename}")
 
 # Only scale the target variables
 target_scaler = MinMaxScaler()
-city_data[targets] = target_scaler.fit_transform(city_data[targets])
+target_data = city_data[targets].values
+scaled_targets = target_scaler.fit_transform(target_data)
+# Assign back to dataframe
+for i, target in enumerate(targets):
+    city_data[target] = scaled_targets[:, i]
 target_scaler_filename = os.path.join(scalers_dir, "target_scaler.joblib")
 joblib.dump(target_scaler, target_scaler_filename)
 print(f"Target scaler saved to {target_scaler_filename}")
 
 # Create sequences
-def create_sequences(data, features, targets, time_steps=24):
+def create_sequences(data, input_features, targets, time_steps=24):
     X = []
     y = []
+    
     for i in range(len(data) - time_steps):
-        X.append(data[features].iloc[i:i+time_steps].values)
-        y.append(data[targets].iloc[i+time_steps].values)
+        # Create sequence from input features
+        sequence = data[input_features].iloc[i:i+time_steps].values
+        X.append(sequence)
+        # Get target values
+        target = data[targets].iloc[i+time_steps].values
+        y.append(target)
+    
     return np.array(X), np.array(y)
 
 TIME_STEPS = 24
+# Use all features (weather + date) for input
 X, y = create_sequences(city_data, features, targets, TIME_STEPS)
 
 # Network Parameters
@@ -146,11 +176,22 @@ with mlflow.start_run(run_name=run_name):
     mae_temp = mean_absolute_error(y_test_inv[:, 0], y_pred_inv[:, 0])
     r2_temp = r2_score(y_test_inv[:, 0], y_pred_inv[:, 0])
     
-    # Calculate precipitation metrics
-    y_test_precip = y_test_inv[:, 1] >= 0.5
-    y_pred_precip = y_pred_inv[:, 1] >= 0.5
-    
-    # Now log all metrics after they're calculated
+    print("Temperature Prediction Performance:")
+    print(f"MSE: {mse_temp:.2f}")
+    print(f"MAE: {mae_temp:.2f}")
+    print(f"R^2 Score: {r2_temp:.2f}")
+
+    # Precipitation metrics (changed from probability to amount)
+    mse_precip = mean_squared_error(y_test_inv[:, 1], y_pred_inv[:, 1])
+    mae_precip = mean_absolute_error(y_test_inv[:, 1], y_pred_inv[:, 1])
+    r2_precip = r2_score(y_test_inv[:, 1], y_pred_inv[:, 1])
+
+    print("\nPrecipitation Amount Prediction Performance:")
+    print(f"MSE: {mse_precip:.2f}")
+    print(f"MAE: {mae_precip:.2f}")
+    print(f"R^2 Score: {r2_precip:.2f}")
+
+    # Update MLflow metrics
     mlflow.log_metrics({
         # Training metrics
         "final_train_loss": history.history['loss'][-1],
@@ -161,13 +202,12 @@ with mlflow.start_run(run_name=run_name):
         "temperature_mae": mae_temp,
         "temperature_r2": r2_temp,
         
-        # Precipitation probability metrics
-        "precip_accuracy": accuracy_score(y_test_precip, y_pred_precip),
-        "precip_precision": precision_score(y_test_precip, y_pred_precip),
-        "precip_recall": recall_score(y_test_precip, y_pred_precip),
-        "precip_f1": f1_score(y_test_precip, y_pred_precip)
+        # Precipitation amount metrics (updated)
+        "precipitation_mse": mse_precip,
+        "precipitation_mae": mae_precip,
+        "precipitation_r2": r2_precip
     })
-    
+
     # Save plots and log as artifacts
     plt.figure(figsize=(10, 6))
     plt.plot(history.history['loss'], label='Train')
@@ -182,58 +222,11 @@ with mlflow.start_run(run_name=run_name):
     # Log plots as artifacts
     mlflow.log_artifact('data/plots/train_loss.png', "plots")
     
-    # Predictions
-    y_pred = model.predict(X_test)
-    y_test_inv = target_scaler.inverse_transform(y_test)
-    y_pred_inv = target_scaler.inverse_transform(y_pred)
-
-    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, classification_report
-
-    # Temperature
-    mse_temp = mean_squared_error(y_test_inv[:, 0], y_pred_inv[:, 0])
-    mae_temp = mean_absolute_error(y_test_inv[:, 0], y_pred_inv[:, 0])
-    r2_temp = r2_score(y_test_inv[:, 0], y_pred_inv[:, 0])
-
-    print("Temperature Prediction Performance:")
-    print(f"MSE: {mse_temp:.2f}")
-    print(f"MAE: {mae_temp:.2f}")
-    print(f"R^2 Score: {r2_temp:.2f}")
-
-    # Precipitation Probability
-    y_test_precip = y_test_inv[:, 1] >= 0.5
-    y_pred_precip = y_pred_inv[:, 1] >= 0.5
-
-    print("\nPrecipitation Probability Prediction Performance:")
-    print(classification_report(y_test_precip, y_pred_precip, target_names=['No Precipitation', 'Precipitation']))
-
-    # Plot Temperature Predictions
-    plt.figure(figsize=(15, 6))
-    plt.plot(y_test_inv[:, 0], label='Actual Temperature')
-    plt.plot(y_pred_inv[:, 0], label='Predicted Temperature')
-    plt.title('Temperature Prediction vs Actual')
-    plt.xlabel('Time Steps')
-    plt.ylabel('Temperature (°C)')
-    plt.legend()
-    plt.savefig('data/plots/temperature_prediction.png')
-    plt.close()
-
-    # Plot Precipitation Probability Predictions
-    plt.figure(figsize=(15, 6))
-    plt.plot(y_test_inv[:, 1], label='Actual Precipitation Probability')
-    plt.plot(y_pred_inv[:, 1], label='Predicted Precipitation Probability')
-    plt.title('Precipitation Probability Prediction vs Actual')
-    plt.xlabel('Time Steps')
-    plt.ylabel('Precipitation Probability')
-    plt.legend()
-    plt.savefig('data/plots/precipitation_probability_predictions.png')
-    plt.close()
-
-    # Log additional prediction plots
-    mlflow.log_artifact('data/plots/temperature_prediction.png', "plots")
-    mlflow.log_artifact('data/plots/precipitation_probability_predictions.png', "plots")
-    
-    # Log the model
-    mlflow.keras.log_model(model, "model")
+    # Simply log the model without input example
+    mlflow.keras.log_model(
+        model, 
+        "weather_forecast_model"
+    )
 
 # Save the model (optional)
 if not os.path.exists('data/models'):
