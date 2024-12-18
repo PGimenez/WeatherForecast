@@ -19,7 +19,7 @@ app = FastAPI()
 # Update the CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080"],
+    allow_origins=["http://localhost:8080", "https://weather.carryall.app"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -150,32 +150,36 @@ async def predict(request: PredictionRequest):
 
         # Create arrays with the same shape as the feature set for predictions
         pred_array = np.zeros((len(predictions), len(features)))
-        temp_index = features.index('temperature_2m')
-        precip_index = features.index('precipitation')
-        
+        temp_index = features.index("temperature_2m")
+        precip_index = features.index("precipitation")
+
         # Put predictions in the correct columns
         pred_array[:, temp_index] = predictions[:, 0]  # temperature predictions
         pred_array[:, precip_index] = predictions[:, 1]  # precipitation predictions
-        
+
         # Inverse transform predictions
         predictions_inv = feature_scaler.inverse_transform(pred_array)
         predicted_temp = predictions_inv[:, temp_index].tolist()
         predicted_precip = predictions_inv[:, precip_index].tolist()
 
         # Handle actual values (as before)
-        actual_temp = city_data['temperature_2m'].iloc[TIME_STEPS-1:].values
-        actual_precip = city_data['precipitation'].iloc[TIME_STEPS-1:].values
+        actual_temp = city_data["temperature_2m"].iloc[TIME_STEPS - 1 :].values
+        actual_precip = city_data["precipitation"].iloc[TIME_STEPS - 1 :].values
 
         # Create arrays with the same shape as the feature set
         temp_array = np.zeros((len(actual_temp), len(features)))
         precip_array = np.zeros((len(actual_precip), len(features)))
-        
+
         temp_array[:, temp_index] = actual_temp
         precip_array[:, precip_index] = actual_precip
 
         # Inverse transform actual values
-        actual_temp = feature_scaler.inverse_transform(temp_array)[:, temp_index].tolist()
-        actual_precip = feature_scaler.inverse_transform(precip_array)[:, precip_index].tolist()
+        actual_temp = feature_scaler.inverse_transform(temp_array)[
+            :, temp_index
+        ].tolist()
+        actual_precip = feature_scaler.inverse_transform(precip_array)[
+            :, precip_index
+        ].tolist()
 
         return {
             "dates": city_data["date"]
@@ -185,7 +189,7 @@ async def predict(request: PredictionRequest):
             "temperature": predicted_temp,
             "precipitation": predicted_precip,
             "actual_temperature": actual_temp,
-            "actual_precipitation": actual_precip
+            "actual_precipitation": actual_precip,
         }
 
     except Exception as e:
@@ -234,34 +238,33 @@ async def download_data():
         try:
             # Create zip file path
             zip_path = Path(temp_dir) / "weather_data.zip"
-            
+
             # Create zip file from data directory
             data_path = Path("data")
             shutil.make_archive(
-                str(zip_path.with_suffix('')),  # Remove .zip as make_archive adds it
-                'zip',
-                data_path
+                str(zip_path.with_suffix("")),  # Remove .zip as make_archive adds it
+                "zip",
+                data_path,
             )
-            
+
             # Return the zip file
             return FileResponse(
                 zip_path,
-                media_type='application/zip',
-                filename='weather_data.zip',
+                media_type="application/zip",
+                filename="weather_data.zip",
                 headers={
                     "Content-Disposition": "attachment; filename=weather_data.zip"
                 },
-                background=None  # Prevent background task from deleting file too early
+                background=None,  # Prevent background task from deleting file too early
             )
         except Exception as e:
             # Clean up temp directory if something goes wrong
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise e
-            
+
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error creating zip file: {str(e)}"
+            status_code=500, detail=f"Error creating zip file: {str(e)}"
         )
 
 
@@ -270,7 +273,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "serve:app",  # Use string reference instead of app instance
-        host="0.0.0.0", 
+        host="0.0.0.0",
         port=8000,
-        reload=True  # Enable auto-reload
+        reload=True,  # Enable auto-reload
     )
