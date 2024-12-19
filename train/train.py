@@ -49,10 +49,9 @@ city_data.reset_index(drop=True, inplace=True)
 # Check for missing values
 city_data.dropna(inplace=True)
 
-# Load the saved scaler
+# Load the saved scalers
 scalers_dir = "data/scalers/"
-scaler_filename = os.path.join(scalers_dir, "minmax_scaler.joblib")
-feature_scaler = joblib.load(scaler_filename)
+target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
 
 # Remove the feature scaling step since data is already scaled
 # city_data[features] = feature_scaler.fit_transform(city_data[features])
@@ -70,28 +69,6 @@ features = [
 ]
 
 targets = ['temperature_2m', 'precipitation']
-
-# Scale all features together
-all_features = features
-feature_scaler = MinMaxScaler()
-feature_data = city_data[features].values
-scaled_features = feature_scaler.fit_transform(feature_data)
-# Assign back to dataframe
-for i, feature in enumerate(features):
-    city_data[feature] = scaled_features[:, i]
-joblib.dump(feature_scaler, scaler_filename)
-print(f"Feature scaler saved to {scaler_filename}")
-
-# Only scale the target variables
-target_scaler = MinMaxScaler()
-target_data = city_data[targets].values
-scaled_targets = target_scaler.fit_transform(target_data)
-# Assign back to dataframe
-for i, target in enumerate(targets):
-    city_data[target] = scaled_targets[:, i]
-target_scaler_filename = os.path.join(scalers_dir, "target_scaler.joblib")
-joblib.dump(target_scaler, target_scaler_filename)
-print(f"Target scaler saved to {target_scaler_filename}")
 
 # Create sequences
 def create_sequences(data, input_features, targets, time_steps=24):
