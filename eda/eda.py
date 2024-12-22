@@ -193,30 +193,32 @@ for city in df["city"].unique():
 
 # MLflow logging
 mlflow.set_tracking_uri(uri="http://mlflow.carryall.local:80")
-mlflow.set_experiment("MLflow Quickstart 2")
+mlflow.set_experiment("weather")
 
 # Get current timestamp for run name
 run_name = f"eda-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
 with mlflow.start_run(run_name=run_name):
     # Log parameters
-    mlflow.log_params({
-        "num_cities": len(df["city"].unique()),
-        "date_range_start": df["date"].min().strftime("%Y-%m-%d"),
-        "date_range_end": df["date"].max().strftime("%Y-%m-%d"),
-        "total_samples": len(df)
-    })
-    
+    mlflow.log_params(
+        {
+            "num_cities": len(df["city"].unique()),
+            "date_range_start": df["date"].min().strftime("%Y-%m-%d"),
+            "date_range_end": df["date"].max().strftime("%Y-%m-%d"),
+            "total_samples": len(df),
+        }
+    )
+
     # Log metrics
     metrics = {
         "avg_temperature": df["temperature_2m"].mean(),
         "avg_humidity": df["relative_humidity_2m"].mean(),
         "avg_wind_speed": df["wind_speed_10m"].mean(),
         "total_precipitation": df["precipitation"].sum(),
-        "missing_values_after_cleanup": df.isnull().sum().sum()
+        "missing_values_after_cleanup": df.isnull().sum().sum(),
     }
     mlflow.log_metrics(metrics)
-    
+
     # Log all generated plots as artifacts
     plot_files = [
         "temperature_over_time.png",
@@ -227,13 +229,13 @@ with mlflow.start_run(run_name=run_name):
         "wind_speed_distribution.png",
         "cumulative_precipitation.png",
         "temperature_vs_humidity.png",
-        "monthly_average_temperature.png"
+        "monthly_average_temperature.png",
     ]
-    
+
     # Log standard plots
     for plot_file in plot_files:
         mlflow.log_artifact(f"data/plots/{plot_file}", "plots")
-    
+
     # Log wind rose plots for each city
     for city in df["city"].unique():
         mlflow.log_artifact(f"data/plots/wind_rose_{city}.png", "wind_rose_plots")

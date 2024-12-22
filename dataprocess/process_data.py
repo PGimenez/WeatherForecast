@@ -14,7 +14,7 @@ else:
 
 # Add MLflow setup
 mlflow.set_tracking_uri(uri="http://mlflow.carryall.local:80")
-mlflow.set_experiment("MLflow Quickstart 2")
+mlflow.set_experiment("weather")
 
 # Data Cleaning
 
@@ -83,11 +83,20 @@ feature_scaler = MinMaxScaler()
 target_scaler = MinMaxScaler()
 
 # Scale features
-feature_columns = [col for col in numeric_columns if col not in [
-    "days_since_start", "month_sin", "month_cos", 
-    "day_of_year_sin", "day_of_year_cos",
-    "temperature_2m", "precipitation"  # exclude targets from feature scaling
-]]
+feature_columns = [
+    col
+    for col in numeric_columns
+    if col
+    not in [
+        "days_since_start",
+        "month_sin",
+        "month_cos",
+        "day_of_year_sin",
+        "day_of_year_cos",
+        "temperature_2m",
+        "precipitation",  # exclude targets from feature scaling
+    ]
+]
 df[feature_columns] = feature_scaler.fit_transform(df[feature_columns])
 
 # Scale targets
