@@ -262,7 +262,6 @@ def objective(trial):
         'epochs': 20,
         'time_steps': 24,
         'train_size': 0.8
-    }
     
     # Train model with suggested parameters
     model, history, metrics = train(
@@ -314,6 +313,10 @@ if __name__ == "__main__":
                 mlflow.log_metrics(metrics)
                 save_and_log_plots(history)
                 mlflow.keras.log_model(model, "weather_forecast_model")
+            print("Saving model")
+            if not os.path.exists("data/models"):
+                os.makedirs("data/models")
+            model.save("data/models/weather_forecast_lstm.h5")
         else:
             # Distributed optimization with storage
             storage = os.getenv('OPTUNA_STORAGE')
@@ -351,7 +354,3 @@ if __name__ == "__main__":
             save_and_log_plots(history)
             mlflow.keras.log_model(model, "weather_forecast_model")
 
-    print("Saving model")
-    if not os.path.exists("data/models"):
-        os.makedirs("data/models")
-    model.save("data/models/weather_forecast_lstm.h5")
