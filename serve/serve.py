@@ -140,56 +140,42 @@ async def predict(request: PredictionRequest):
         # Prepare input data - use only weather features
         input_data_features = city_data[features].copy()
 
+        # Scale the input features
+        scaled_features = feature_scaler.transform(input_data_features)
+
         # Prepare sequences
-        input_sequences = create_sequences(
-            input_data_features.values, time_steps=TIME_STEPS
-        )
+        input_sequences = create_sequences(scaled_features, time_steps=TIME_STEPS)
 
         # Make predictions
         predictions = model.predict(input_sequences)
 
-        # Create arrays with the same shape as the feature set for predictions
-        pred_array = np.zeros((len(predictions), len(features)))
+        # Inverse transform predictions
+        # Create arrays with the same shape as predictions
+        temp_predictions = np.zeros((len(predictions), len(features)))
+        precip_predictions = np.zeros((len(predictions), len(features)))
+
         temp_index = features.index("temperature_2m")
         precip_index = features.index("precipitation")
 
-        # Put predictions in the correct columns
-        pred_array[:, temp_index] = predictions[:, 0]  # temperature predictions
-        pred_array[:, precip_index] = predictions[:, 1]  # precipitation predictions
+        temp_predictions[:, temp_index] = predictions[:, 0]
+        precip_predictions[:, precip_index] = predictions[:, 1]
 
-        # Inverse transform predictions
-        predictions_inv = feature_scaler.inverse_transform(pred_array)
-        predicted_temp = predictions_inv[:, temp_index].tolist()
-        predicted_precip = predictions_inv[:, precip_index].tolist()
+        # Inverse transform
+        temp_predictions = feature_scaler.inverse_transform(temp_predictions)[:, temp_index]
+        precip_predictions = feature_scaler.inverse_transform(precip_predictions)[:, precip_index]
 
-        # Handle actual values (as before)
-        actual_temp = city_data["temperature_2m"].iloc[TIME_STEPS - 1 :].values
-        actual_precip = city_data["precipitation"].iloc[TIME_STEPS - 1 :].values
-
-        # Create arrays with the same shape as the feature set
-        temp_array = np.zeros((len(actual_temp), len(features)))
-        precip_array = np.zeros((len(actual_precip), len(features)))
-
-        temp_array[:, temp_index] = actual_temp
-        precip_array[:, precip_index] = actual_precip
-
-        # Inverse transform actual values
-        actual_temp = feature_scaler.inverse_transform(temp_array)[
-            :, temp_index
-        ].tolist()
-        actual_precip = feature_scaler.inverse_transform(precip_array)[
-            :, precip_index
-        ].tolist()
+        # Get actual values
+        actual_values = city_data[["temperature_2m", "precipitation"]].iloc[TIME_STEPS-1:].values
 
         return {
             "dates": city_data["date"]
             .iloc[TIME_STEPS - 1 :]
             .dt.strftime("%Y-%m-%d %H:00:00")
             .tolist(),
-            "temperature": predicted_temp,
-            "precipitation": predicted_precip,
-            "actual_temperature": actual_temp,
-            "actual_precipitation": actual_precip,
+            "temperature": temp_predictions.tolist(),
+            "precipitation": precip_predictions.tolist(),
+            "actual_temperature": actual_values[:, 0].tolist(),
+            "actual_precipitation": actual_values[:, 1].tolist(),
         }
 
     except Exception as e:
