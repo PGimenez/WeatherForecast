@@ -259,9 +259,20 @@ def objective(trial):
         'dense_units': trial.suggest_int('dense_units', 16, 128),
         'dropout_rate': trial.suggest_float('dropout_rate', 0.1, 0.5),
         'batch_size': trial.suggest_int('batch_size', 16, 128),
-        'epochs': 20
+        'epochs': 20,
+        'time_steps': 24,
+        'train_size': 0.8
     }
     
+    # Train model with suggested parameters
+    model, history, metrics = train(
+        data_path="data/all_cities_processed.csv",
+        scalers_dir="data/scalers/",
+        **params
+    )
+    
+    # Return the validation loss as the objective value to minimize
+    return metrics['final_val_loss']
 
 
 if __name__ == "__main__":
