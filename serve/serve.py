@@ -32,7 +32,7 @@ if not os.path.exists(model_path):
 model = load_model(model_path)
 
 # Load the scaler
-scaler_path = "data/scalers/minmax_scaler.joblib"
+scaler_path = "data/scalers/feature_scaler.joblib"
 if not os.path.exists(scaler_path):
     raise FileNotFoundError(f"Scaler file not found: {scaler_path}")
 feature_scaler = joblib.load(scaler_path)
@@ -161,11 +161,17 @@ async def predict(request: PredictionRequest):
         precip_predictions[:, precip_index] = predictions[:, 1]
 
         # Inverse transform
-        temp_predictions = feature_scaler.inverse_transform(temp_predictions)[:, temp_index]
-        precip_predictions = feature_scaler.inverse_transform(precip_predictions)[:, precip_index]
+        temp_predictions = feature_scaler.inverse_transform(temp_predictions)[
+            :, temp_index
+        ]
+        precip_predictions = feature_scaler.inverse_transform(precip_predictions)[
+            :, precip_index
+        ]
 
         # Get actual values
-        actual_values = city_data[["temperature_2m", "precipitation"]].iloc[TIME_STEPS-1:].values
+        actual_values = (
+            city_data[["temperature_2m", "precipitation"]].iloc[TIME_STEPS - 1 :].values
+        )
 
         return {
             "dates": city_data["date"]
