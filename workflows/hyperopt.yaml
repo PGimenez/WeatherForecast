@@ -1,0 +1,141 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: weather-hyperparameter-tuning-
+  namespace: user-pgimenez
+spec:
+  serviceAccountName: user-pgimenez
+  imagePullSecrets:
+    - name: github-registry-secret
+  entrypoint: hyperparameter-tuning
+  parallelism: 15
+  volumes:
+    - name: data-volume
+      persistentVolumeClaim:
+        claimName: data
+    - name: gcs-creds-volume
+      secret:
+        secretName: vault-secrets
+        items:
+          - key: gcs-creds
+            path: gcs-creds
+    - name: optuna-storage
+      emptyDir: {}
+
+  templates:
+    - name: hyperparameter-tuning
+      inputs:
+        parameters:
+          - name: n-trials
+            value: "1"
+      steps:
+        - - name: create-study
+            template: create-study
+        - - name: run-trials
+            template: run-optimization
+            withSequence:
+              count: "{{inputs.parameters.n-trials}}"
+        - - name: train-best-model
+            template: train-best-model
+
+    - name: create-study
+      script:
+        image: ghcr.io/pgimenez/train:latest
+        command: [python]
+        source: |
+          import optuna
+          import os
+
+          # Delete existing database if it exists
+          db_path = "/optuna/optuna.db"
+          if os.path.exists(db_path):
+              os.remove(db_path)
+              print(f"Deleted existing database at {db_path}")
+
+          storage = "sqlite:////" + db_path
+          study = optuna.create_study(
+              study_name="weather_forecast",
+              storage=storage,
+              direction="minimize"
+          )
+          print("Created new study")
+        volumeMounts:
+          - name: data-volume
+            mountPath: /optuna
+            subPath: optuna
+
+    - name: run-optimization
+      container:
+        image: ghcr.io/pgimenez/train:latest
+        command: ["python", "train.py", "--tuning"]
+        env:
+          - name: OPTUNA_STORAGE
+            value: "sqlite:////optuna/optuna.db"
+          - name: N_TRIALS
+            value: "1"
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /gcp/gcs-creds
+        volumeMounts:
+          - name: data-volume
+            mountPath: /optuna
+            subPath: optuna
+          - name: data-volume
+            mountPath: /app/data
+            subPath: weather/
+          - name: gcs-creds-volume
+            mountPath: /gcp
+            readOnly: true
+
+    - name: train-best-model
+      script:
+        image: ghcr.io/pgimenez/train:latest
+        command: [python]
+        source: |
+          import optuna
+          import mlflow
+          from datetime import datetime
+          from train import train, save_and_log_plots
+          import os
+
+          # Load the study
+          storage = "sqlite:////" + "/optuna/optuna.db"
+          study = optuna.load_study(
+              study_name="weather_forecast",
+              storage=storage
+          )
+
+          print("Best trial:")
+          print(f"  Value: {study.best_trial.value}")
+          print("  Params: {study.best_trial.params}")
+
+          # Train final model with best parameters
+          mlflow.set_tracking_uri(uri="http://mlflow.carryall.local:80")
+          mlflow.set_experiment("weather")
+
+          with mlflow.start_run(run_name=f"best-params-model-{datetime.now().strftime('%Y%m%d-%H%M%S')}"):
+              model, history, metrics = train(
+                  data_path="data/all_cities_processed.csv",
+                  scalers_dir="data/scalers/",
+                  **study.best_trial.params
+              )
+              
+              # Log best parameters and final metrics
+              mlflow.log_params(study.best_trial.params)
+              mlflow.log_metrics(metrics)
+              save_and_log_plots(history)
+              mlflow.keras.log_model(model, "weather_forecast_model")
+              
+              # Save model
+              if not os.path.exists("data/models"):
+                  os.makedirs("data/models")
+              model.save("data/models/weather_forecast_lstm.h5")
+        volumeMounts:
+          - name: data-volume
+            mountPath: /optuna
+            subPath: optuna
+          - name: data-volume
+            mountPath: /app/data
+            subPath: weather/
+          - name: gcs-creds-volume
+            mountPath: /gcp
+            readOnly: true
