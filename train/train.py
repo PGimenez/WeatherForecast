@@ -262,6 +262,7 @@ def objective(trial):
         'epochs': 20,
         'time_steps': 24,
         'train_size': 0.8
+    }
     
     # Train model with suggested parameters
     model, history, metrics = train(
