@@ -107,7 +107,7 @@ class DataInfoResponse(BaseModel):
     last_datapoint: dict
 
 
-# Helper functions remain the same
+# Helper functions remain the same-
 def create_sequences(data, time_steps=TIME_STEPS):
     X = []
     for i in range(len(data) - time_steps + 1):
