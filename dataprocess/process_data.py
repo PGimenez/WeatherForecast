@@ -84,18 +84,36 @@ target_scaler = MinMaxScaler()
 
 # Scale features
 feature_columns = [
-    col
-    for col in numeric_columns
-    if col
-    not in [
-        "days_since_start",
-        "month_sin",
-        "month_cos",
-        "day_of_year_sin",
-        "day_of_year_cos",
-        "temperature_2m",
-        "precipitation",  # exclude targets from feature scaling
-    ]
+    "temperature_2m",
+    "relative_humidity_2m",
+    "dew_point_2m",
+    "apparent_temperature",
+    "precipitation",
+    "rain",
+    "snowfall",
+    "snow_depth",
+    "weather_code",
+    "pressure_msl",
+    "surface_pressure",
+    "cloud_cover",
+    "cloud_cover_low",
+    "cloud_cover_mid",
+    "cloud_cover_high",
+    "et0_fao_evapotranspiration",
+    "vapour_pressure_deficit",
+    "wind_speed_10m",
+    "wind_speed_100m",
+    "wind_direction_10m",
+    "wind_direction_100m",
+    "wind_gusts_10m",
+    "soil_temperature_0_to_7cm",
+    "soil_temperature_7_to_28cm",
+    "soil_temperature_28_to_100cm",
+    "soil_temperature_100_to_255cm",
+    "soil_moisture_0_to_7cm",
+    "soil_moisture_7_to_28cm",
+    "soil_moisture_28_to_100cm",
+    "soil_moisture_100_to_255cm",
 ]
 df[feature_columns] = feature_scaler.fit_transform(df[feature_columns])
 
