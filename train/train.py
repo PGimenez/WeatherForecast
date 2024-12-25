@@ -123,48 +123,47 @@ def train(
     Train an LSTM model using Keras TimeseriesGenerator
     """
     # Load only required columns using chunks
-    required_cols = ['date', 'city'] + features + targets
+    required_cols = ["date", "city"] + features + targets
     chunks = []
     chunk_size = 10000  # Adjust based on your memory constraints
-    
-    for chunk in pd.read_csv(data_path, 
-                           usecols=required_cols,
-                           parse_dates=['date'],
-                           chunksize=chunk_size):
+
+    for chunk in pd.read_csv(
+        data_path, usecols=required_cols, parse_dates=["date"], chunksize=chunk_size
+    ):
         chunks.append(chunk)
-    
+
     df = pd.concat(chunks, ignore_index=True)
-    
+
     # Clean and prepare data
-    df.sort_values('date', inplace=True)
+    df.sort_values("date", inplace=True)
     df.dropna(inplace=True)
-    
+
     # Prepare features and targets
     feature_data = df[features].values
     target_data = df[targets].values
-    
+
     # Split data
     train_size = int(len(feature_data) * train_size)
     train_features = feature_data[:train_size]
     train_targets = target_data[:train_size]
     test_features = feature_data[train_size:]
     test_targets = target_data[train_size:]
-    
+
     # Create TimeseriesGenerator for training and testing
     train_generator = TimeseriesGenerator(
         data=train_features,
         targets=train_targets,
         length=time_steps,
-        batch_size=batch_size
+        batch_size=batch_size,
     )
-    
+
     test_generator = TimeseriesGenerator(
         data=test_features,
         targets=test_targets,
         length=time_steps,
-        batch_size=batch_size
+        batch_size=batch_size,
     )
-    
+
     # Load the saved scalers
     target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
 
@@ -241,30 +240,34 @@ def objective(trial):
     """Optuna objective function for hyperparameter optimization."""
     # Suggest hyperparameters
     params = {
-        'lstm_units': trial.suggest_int('lstm_units', 32, 256),
-        'dense_units': trial.suggest_int('dense_units', 16, 128),
-        'dropout_rate': trial.suggest_float('dropout_rate', 0.1, 0.5),
-        'batch_size': trial.suggest_int('batch_size', 16, 128),
-        'epochs': 20,
-        'time_steps': 24,
-        'train_size': 0.8
+        "lstm_units": trial.suggest_int("lstm_units", 32, 256),
+        "dense_units": trial.suggest_int("dense_units", 16, 128),
+        "dropout_rate": trial.suggest_float("dropout_rate", 0.1, 0.5),
+        "batch_size": trial.suggest_int("batch_size", 16, 128),
+        "epochs": 20,
+        "time_steps": 24,
+        "train_size": 0.8,
     }
-    
+
     # Train model with suggested parameters
     model, history, metrics = train(
-        data_path="data/all_cities_processed.csv",
-        scalers_dir="data/scalers/",
-        **params
+        data_path="data/all_cities_processed.csv", scalers_dir="data/scalers/", **params
     )
-    
+
     # Return the validation loss as the objective value to minimize
-    return metrics['final_val_loss']
+    return metrics["final_val_loss"]
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tuning', action='store_true', help='Perform hyperparameter tuning')
-    parser.add_argument('--local', action='store_true', help='Run local optimization without distributed storage')
+    parser.add_argument(
+        "--tuning", action="store_true", help="Perform hyperparameter tuning"
+    )
+    parser.add_argument(
+        "--local",
+        action="store_true",
+        help="Run local optimization without distributed storage",
+    )
     args = parser.parse_args()
 
     print("Connecting to MLflow")
@@ -277,9 +280,9 @@ if __name__ == "__main__":
 
         if args.local:
             # Local optimization without storage
-            study = optuna.create_study(direction='minimize')
+            study = optuna.create_study(direction="minimize")
             study.optimize(objective, n_trials=20, callbacks=[mlflow_callback])
-            
+
             # Print and train with best parameters for local runs
             print("Best trial:")
             print(f"  Value: {study.best_trial.value}")
@@ -289,11 +292,13 @@ if __name__ == "__main__":
 
             # Train final model with best parameters in a new MLflow run
             print("\nTraining final model with best parameters")
-            with mlflow.start_run(run_name=f"best-params-model-{datetime.now().strftime('%Y%m%d-%H%M%S')}"):
+            with mlflow.start_run(
+                run_name=f"best-params-model-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            ):
                 model, history, metrics = train(
                     data_path="data/all_cities_processed.csv",
                     scalers_dir="data/scalers/",
-                    **study.best_trial.params
+                    **study.best_trial.params,
                 )
                 # Log best parameters and final metrics
                 mlflow.log_params(study.best_trial.params)
@@ -306,38 +311,42 @@ if __name__ == "__main__":
             model.save("data/models/weather_forecast_lstm.h5")
         else:
             # Distributed optimization with storage
-            storage = os.getenv('OPTUNA_STORAGE')
+            storage = os.getenv("OPTUNA_STORAGE")
             if not storage:
                 raise ValueError("OPTUNA_STORAGE environment variable not set")
-            
-            study = optuna.load_study(
-                study_name="weather_forecast",
-                storage=storage
-            )
-            n_trials = int(os.getenv('N_TRIALS', '1'))
+
+            study = optuna.load_study(study_name="weather_forecast", storage=storage)
+            n_trials = int(os.getenv("N_TRIALS", "1"))
             study.optimize(objective, n_trials=n_trials, callbacks=[mlflow_callback])
 
     else:
         print("Training with default parameters")
-        with mlflow.start_run(run_name=f"lstm-training-{datetime.now().strftime('%Y%m%d-%H%M%S')}"):
+        with mlflow.start_run(
+            run_name=f"lstm-training-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        ):
             model, history, metrics = train(
                 data_path="data/all_cities_processed.csv",
                 scalers_dir="data/scalers/",
             )
-            
+
+            print("Saving model")
+            if not os.path.exists("data/models"):
+                os.makedirs("data/models")
+            model.save("data/models/weather_forecast_lstm.h5")
             # Log parameters and metrics
-            mlflow.log_params({
-                "time_steps": 24,
-                "train_size": 0.8,
-                "lstm_units": 64,
-                "dense_units": 32,
-                "dropout_rate": 0.2,
-                "batch_size": 32,
-                "epochs": 20,
-                "features": features,
-                "targets": targets,
-            })
+            mlflow.log_params(
+                {
+                    "time_steps": 24,
+                    "train_size": 0.8,
+                    "lstm_units": 64,
+                    "dense_units": 32,
+                    "dropout_rate": 0.2,
+                    "batch_size": 32,
+                    "epochs": 20,
+                    "features": features,
+                    "targets": targets,
+                }
+            )
             mlflow.log_metrics(metrics)
             save_and_log_plots(history)
             mlflow.keras.log_model(model, "weather_forecast_model")
-
