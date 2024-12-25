@@ -24,6 +24,7 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout
 import optuna
 from optuna.integration import MLflowCallback
 import argparse
+from tensorflow.keras.preprocessing.sequence import TimeseriesGenerator
 
 os.environ["MLFLOW_ARTIFACT_URI"] = "s3://pgimenezbucket/path/"
 warnings.filterwarnings("ignore")
@@ -107,35 +108,6 @@ features = [
 targets = ["temperature_2m", "precipitation"]
 
 
-# Create sequences
-def create_sequences(data, input_features, targets, time_steps=24):
-    """
-    Optimize sequence creation using numpy's stride_tricks for better performance
-    """
-    # Convert DataFrame to numpy array once
-    feature_data = data[input_features].values
-    target_data = data[targets].values
-    
-    # Calculate the shape of the output arrays
-    n_sequences = len(data) - time_steps
-    n_features = len(input_features)
-    n_targets = len(targets)
-    
-    # Create strided array for features
-    stride = feature_data.strides
-    X = np.lib.stride_tricks.as_strided(
-        feature_data,
-        shape=(n_sequences, time_steps, n_features),
-        strides=(stride[0], stride[0], stride[1]),
-        writeable=False
-    )
-    
-    # Create target array
-    y = target_data[time_steps:]
-    
-    return X, y
-
-
 def train(
     data_path: str,
     scalers_dir: str,
@@ -148,7 +120,7 @@ def train(
     epochs: int = 20,
 ):
     """
-    Train an LSTM model with optimized data loading
+    Train an LSTM model using Keras TimeseriesGenerator
     """
     # Load only required columns using chunks
     required_cols = ['date', 'city'] + features + targets
@@ -167,41 +139,55 @@ def train(
     df.sort_values('date', inplace=True)
     df.dropna(inplace=True)
     
-    # Create sequences with optimized function
-    X, y = create_sequences(df, features, targets, time_steps)
+    # Prepare features and targets
+    feature_data = df[features].values
+    target_data = df[targets].values
     
-    # Clear df from memory
-    del df
-    chunks.clear()
+    # Split data
+    train_size = int(len(feature_data) * train_size)
+    train_features = feature_data[:train_size]
+    train_targets = target_data[:train_size]
+    test_features = feature_data[train_size:]
+    test_targets = target_data[train_size:]
+    
+    # Create TimeseriesGenerator for training and testing
+    train_generator = TimeseriesGenerator(
+        data=train_features,
+        targets=train_targets,
+        length=time_steps,
+        batch_size=batch_size
+    )
+    
+    test_generator = TimeseriesGenerator(
+        data=test_features,
+        targets=test_targets,
+        length=time_steps,
+        batch_size=batch_size
+    )
     
     # Load the saved scalers
     target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
 
-    # Split data
-    train_size = int(len(X) * train_size)
-    X_train, X_test = X[:train_size], X[train_size:]
-    y_train, y_test = y[:train_size], y[train_size:]
-
     # Build model
     model = Sequential()
-    model.add(LSTM(units=lstm_units, input_shape=(X_train.shape[1], X_train.shape[2])))
+    model.add(LSTM(units=lstm_units, input_shape=(time_steps, len(features))))
     model.add(Dropout(dropout_rate))
     model.add(Dense(units=dense_units, activation="relu"))
-    model.add(Dense(units=y_train.shape[1]))
+    model.add(Dense(units=len(targets)))
     model.compile(optimizer="adam", loss="mean_squared_error")
 
     # Train model
     history = model.fit(
-        X_train,
-        y_train,
+        train_generator,
         epochs=epochs,
-        batch_size=batch_size,
-        validation_data=(X_test, y_test),
+        validation_data=test_generator,
         verbose=1,
     )
 
     # Calculate metrics
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(test_generator)
+    # Get the actual test targets, excluding the first time_steps samples
+    y_test = test_targets[time_steps:]
     y_test_inv = target_scaler.inverse_transform(y_test)
     y_pred_inv = target_scaler.inverse_transform(y_pred)
 
