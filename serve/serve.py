@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from tensorflow.keras.models import load_model
+import mlflow.pyfunc
 from sklearn.preprocessing import MinMaxScaler
 import joblib
 from datetime import datetime, timedelta
@@ -25,11 +25,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the trained model
-model_path = "data/models/weather_forecast_lstm.h5"
-if not os.path.exists(model_path):
-    raise FileNotFoundError(f"Model file not found: {model_path}")
-model = load_model(model_path)
+# Load the model from MLflow
+model_name = "bestparams"
+model_version = 1
+try:
+    print(f"\nLoading model '{model_name}' version {model_version} from MLflow...")
+    model = mlflow.pyfunc.load_model(model_uri=f"models:/{model_name}/{model_version}")
+    print("Model loaded successfully!\n")
+except Exception as e:
+    print(f"\nFailed to load model from MLflow: {str(e)}\n")
+    raise Exception(f"Failed to load model from MLflow: {str(e)}")
 
 # Load the scaler
 scaler_path = "data/scalers/feature_scaler.joblib"
@@ -118,6 +123,10 @@ def create_sequences(data, time_steps=TIME_STEPS):
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
     try:
+        print(f"\nReceived prediction request:")
+        print(f"City: {request.city}")
+        print(f"Date range: {request.start_date} to {request.end_date}\n")
+
         # Convert dates to datetime objects (timezone-naive)
         start_date = pd.to_datetime(request.start_date).tz_localize(None)
         end_date = pd.to_datetime(request.end_date).tz_localize(None)
@@ -191,6 +200,8 @@ async def predict(request: PredictionRequest):
 @app.get("/data_info", response_model=DataInfoResponse)
 async def data_info(city: str):
     try:
+        print(f"\nReceived data info request for city: {city}\n")
+        
         if not city:
             raise HTTPException(status_code=400, detail="City parameter is required")
 

@@ -6,3 +6,5 @@ numpy
 pydantic
 joblib
 scikit-learn
+mlflow
+google-cloud-storage
