@@ -87,7 +87,7 @@ features = [
 
 targets = ["temperature_2m", "precipitation"]
 
-TIME_STEPS = 24
+TIME_STEPS = 72
 
 
 # Pydantic models for request/response validation

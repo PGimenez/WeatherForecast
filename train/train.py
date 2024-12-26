@@ -242,8 +242,8 @@ def objective(trial):
         "dense_units": trial.suggest_int("dense_units", 16, 128),
         "dropout_rate": trial.suggest_float("dropout_rate", 0.1, 0.5),
         "batch_size": trial.suggest_int("batch_size", 16, 128),
-        "epochs": 20,
-        "time_steps": 24,
+        "epochs": 5,
+        "time_steps": 72,
         "train_size": 0.8,
     }
 
