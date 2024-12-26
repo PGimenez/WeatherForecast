@@ -26,7 +26,7 @@ app.add_middleware(
 )
 
 # Load the model from MLflow
-model_name = "weather_bestrun"
+model_name = "weather_forecast"
 model_version = 1
 try:
     print(f"\nLoading model '{model_name}' version {model_version} from MLflow...")
