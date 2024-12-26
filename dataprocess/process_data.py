@@ -74,21 +74,11 @@ print(df.describe())
 # Example: Normalize numerical features
 from sklearn.preprocessing import MinMaxScaler
 
-# Create the scalers directory if it doesn't exist
-scalers_dir = "data/scalers/"
-os.makedirs(scalers_dir, exist_ok=True)
-
-# Save separate scalers for features and targets
-feature_scaler = MinMaxScaler()
-target_scaler = MinMaxScaler()
-
 # Scale features
 feature_columns = [
-    "temperature_2m",
     "relative_humidity_2m",
     "dew_point_2m",
     "apparent_temperature",
-    "precipitation",
     "rain",
     "snowfall",
     "snow_depth",
@@ -115,10 +105,20 @@ feature_columns = [
     "soil_moisture_28_to_100cm",
     "soil_moisture_100_to_255cm",
 ]
-df[feature_columns] = feature_scaler.fit_transform(df[feature_columns])
 
-# Scale targets
+# Define target columns
 target_columns = ["temperature_2m", "precipitation"]
+
+# Create the scalers directory if it doesn't exist
+scalers_dir = "data/scalers/"
+os.makedirs(scalers_dir, exist_ok=True)
+
+# Save separate scalers for features and targets
+feature_scaler = MinMaxScaler()
+target_scaler = MinMaxScaler()
+
+# Scale features and targets separately
+df[feature_columns] = feature_scaler.fit_transform(df[feature_columns])
 df[target_columns] = target_scaler.fit_transform(df[target_columns])
 
 # Save both scalers

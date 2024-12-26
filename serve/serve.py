@@ -26,7 +26,7 @@ app.add_middleware(
 )
 
 # Load the model from MLflow
-model_name = "bestparams"
+model_name = "weather_bestrun"
 model_version = 1
 try:
     print(f"\nLoading model '{model_name}' version {model_version} from MLflow...")
@@ -53,13 +53,11 @@ if not os.path.exists(csv_file):
     raise FileNotFoundError(f"{csv_file} does not exist.")
 df = pd.read_csv(csv_file, parse_dates=["date"])
 
-# Features lists remain the same
+# Features list should NOT include the target variables
 features = [
-    "temperature_2m",
     "relative_humidity_2m",
     "dew_point_2m",
     "apparent_temperature",
-    "precipitation",
     "rain",
     "snowfall",
     "snow_depth",
@@ -86,6 +84,8 @@ features = [
     "soil_moisture_28_to_100cm",
     "soil_moisture_100_to_255cm",
 ]
+
+targets = ["temperature_2m", "precipitation"]
 
 TIME_STEPS = 24
 
@@ -146,49 +146,29 @@ async def predict(request: PredictionRequest):
                 status_code=400, detail="Not enough data for the specified date range"
             )
 
-        # Prepare input data - use only weather features
-        input_data_features = city_data[features].copy()
+        # Use all features including target variables for input
+        input_data = city_data[features].copy()
 
-        # Scale the input features
-        scaled_features = feature_scaler.transform(input_data_features)
-
-        # Prepare sequences
-        input_sequences = create_sequences(scaled_features, time_steps=TIME_STEPS)
+        # Create sequences
+        input_sequences = create_sequences(input_data, time_steps=TIME_STEPS)
 
         # Make predictions
         predictions = model.predict(input_sequences)
 
-        # Inverse transform predictions
-        # Create arrays with the same shape as predictions
-        temp_predictions = np.zeros((len(predictions), len(features)))
-        precip_predictions = np.zeros((len(predictions), len(features)))
+        # Inverse transform predictions using target_scaler
+        predictions_reshaped = predictions.reshape(-1, len(targets))
+        predictions_original = target_scaler.inverse_transform(predictions_reshaped)
 
-        temp_index = features.index("temperature_2m")
-        precip_index = features.index("precipitation")
-
-        temp_predictions[:, temp_index] = predictions[:, 0]
-        precip_predictions[:, precip_index] = predictions[:, 1]
-
-        # Inverse transform
-        temp_predictions = feature_scaler.inverse_transform(temp_predictions)[
-            :, temp_index
-        ]
-        precip_predictions = feature_scaler.inverse_transform(precip_predictions)[
-            :, precip_index
-        ]
-
-        # Get actual values
-        actual_values = (
-            city_data[["temperature_2m", "precipitation"]].iloc[TIME_STEPS - 1 :].values
-        )
+        # Get actual values for temperature and precipitation
+        actual_values = city_data[targets].iloc[TIME_STEPS - 1 :].values
 
         return {
             "dates": city_data["date"]
             .iloc[TIME_STEPS - 1 :]
             .dt.strftime("%Y-%m-%d %H:00:00")
             .tolist(),
-            "temperature": temp_predictions.tolist(),
-            "precipitation": precip_predictions.tolist(),
+            "temperature": predictions_original[:, 0].tolist(),
+            "precipitation": predictions_original[:, 1].tolist(),
             "actual_temperature": actual_values[:, 0].tolist(),
             "actual_precipitation": actual_values[:, 1].tolist(),
         }
@@ -201,7 +181,7 @@ async def predict(request: PredictionRequest):
 async def data_info(city: str):
     try:
         print(f"\nReceived data info request for city: {city}\n")
-        
+
         if not city:
             raise HTTPException(status_code=400, detail="City parameter is required")
 

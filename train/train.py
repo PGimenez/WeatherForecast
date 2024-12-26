@@ -73,11 +73,9 @@ target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
 
 # Features and targets
 features = [
-    "temperature_2m",
     "relative_humidity_2m",
     "dew_point_2m",
     "apparent_temperature",
-    "precipitation",
     "rain",
     "snowfall",
     "snow_depth",
@@ -117,7 +115,7 @@ def train(
     dense_units: int = 32,
     dropout_rate: float = 0.2,
     batch_size: int = 32,
-    epochs: int = 20,
+    epochs: int = 5,
 ):
     """
     Train an LSTM model using Keras TimeseriesGenerator
@@ -333,6 +331,7 @@ if __name__ == "__main__":
             if not os.path.exists("data/models"):
                 os.makedirs("data/models")
             model.save("data/models/weather_forecast_lstm.h5")
+
             # Log parameters and metrics
             mlflow.log_params(
                 {
@@ -349,4 +348,9 @@ if __name__ == "__main__":
             )
             mlflow.log_metrics(metrics)
             save_and_log_plots(history)
-            mlflow.keras.log_model(model, "weather_forecast_model")
+
+            # mlflow.keras.log_model(
+            #     model,
+            #     "weather_forecast_model",
+            #     registered_model_name="weather_forecast",
+            # )
