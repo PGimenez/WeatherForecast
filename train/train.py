@@ -9,11 +9,6 @@ from sklearn.metrics import (
     mean_squared_error,
     mean_absolute_error,
     r2_score,
-    accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
-    classification_report,
 )
 from mlflow.models.signature import infer_signature
 import json
@@ -77,7 +72,6 @@ city_data.dropna(inplace=True)
 
 # Load the saved scalers
 scalers_dir = "data/scalers/"
-target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
 
 # Remove the feature scaling step since data is already scaled
 # city_data[features] = feature_scaler.fit_transform(city_data[features])
@@ -282,7 +276,7 @@ def objective(trial):
         "dense_units": trial.suggest_int("dense_units", 32, 256),
         "dropout_rate": trial.suggest_float("dropout_rate", 0.1, 0.3),
         "batch_size": trial.suggest_int("batch_size", 32, 256),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-1, log=True),
         "epochs": 10,
         "time_steps": trial.suggest_int("time_steps", 24, 168),
         "train_size": 0.8,
