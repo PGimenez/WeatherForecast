@@ -72,7 +72,7 @@ print(df.describe())
 # Data Transformation
 
 # Example: Normalize numerical features
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 
 # Scale features
 feature_columns = [
@@ -106,28 +106,22 @@ feature_columns = [
     "soil_moisture_100_to_255cm",
 ]
 
-# Define target columns
-target_columns = ["temperature_2m", "precipitation"]
+# Define target columns - This needs to be updated since we're predicting all features
+target_columns = feature_columns  # Now targets are the same as features
 
 # Create the scalers directory if it doesn't exist
 scalers_dir = "data/scalers/"
 os.makedirs(scalers_dir, exist_ok=True)
 
-# Save separate scalers for features and targets
-feature_scaler = MinMaxScaler()
-target_scaler = MinMaxScaler()
-
-# Scale features and targets separately
+# Use StandardScaler instead of MinMaxScaler
+feature_scaler = StandardScaler()
 df[feature_columns] = feature_scaler.fit_transform(df[feature_columns])
-df[target_columns] = target_scaler.fit_transform(df[target_columns])
 
-# Save both scalers
+# Save the feature scaler
 feature_scaler_filename = os.path.join(scalers_dir, "feature_scaler.joblib")
-target_scaler_filename = os.path.join(scalers_dir, "target_scaler.joblib")
 joblib.dump(feature_scaler, feature_scaler_filename)
-joblib.dump(target_scaler, target_scaler_filename)
 print(f"Feature scaler saved to {feature_scaler_filename}")
-print(f"Target scaler saved to {target_scaler_filename}")
+# Remove target scaler saving
 
 # Save the processed data
 processed_csv_file = "data/all_cities_processed.csv"
