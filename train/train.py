@@ -20,11 +20,13 @@ import json
 import tempfile
 import os
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
 import optuna
 from optuna.integration import MLflowCallback
 import argparse
 from tensorflow.keras.preprocessing.sequence import TimeseriesGenerator
+import tensorflow as tf
+from tensorflow.keras.optimizers.schedules import ExponentialDecay
 
 os.environ["MLFLOW_ARTIFACT_URI"] = "s3://pgimenezbucket/path/"
 warnings.filterwarnings("ignore")
@@ -33,6 +35,15 @@ from sklearn.preprocessing import MinMaxScaler
 
 # For reproducibility
 np.random.seed(42)
+
+# Enable Metal for M1 GPU
+try:
+    tf.config.experimental.set_visible_devices(
+        tf.config.list_physical_devices("GPU"), "GPU"
+    )
+    print("GPU acceleration enabled")
+except:
+    print("No GPU devices found. Running on CPU")
 
 # Add MLflow setup after the imports
 # mlflow.create_experiment(
@@ -103,7 +114,7 @@ features = [
     "soil_moisture_100_to_255cm",
 ]
 
-targets = ["temperature_2m", "precipitation"]
+targets = features  # Now we predict all features
 
 
 def train(
@@ -111,14 +122,15 @@ def train(
     scalers_dir: str,
     time_steps: int = 24,
     train_size: float = 0.8,
-    lstm_units: int = 64,
-    dense_units: int = 32,
-    dropout_rate: float = 0.2,
+    lstm_units: int = 128,
+    dense_units: int = 64,
+    dropout_rate: float = 0.1,
     batch_size: int = 32,
-    epochs: int = 5,
+    epochs: int = 10,
+    learning_rate: float = 0.01,
 ):
     """
-    Train an LSTM model using Keras TimeseriesGenerator
+    Train an LSTM model using Keras TimeseriesGenerator to predict all features
     """
     # Load only required columns using chunks
     required_cols = ["date", "city"] + features + targets
@@ -136,16 +148,21 @@ def train(
     df.sort_values("date", inplace=True)
     df.dropna(inplace=True)
 
-    # Prepare features and targets
+    # Load the feature scaler instead of target scaler
+    feature_scaler = joblib.load(os.path.join(scalers_dir, "feature_scaler.joblib"))
+
+    # Prepare features and targets (now they're the same)
     feature_data = df[features].values
-    target_data = df[targets].values
+    target_data = feature_data  # We want to predict all features
 
     # Split data
     train_size = int(len(feature_data) * train_size)
     train_features = feature_data[:train_size]
-    train_targets = target_data[:train_size]
-    test_features = feature_data[train_size:]
-    test_targets = target_data[train_size:]
+    train_targets = target_data[
+        1 : train_size + 1
+    ]  # Shift by 1 to predict next timestep
+    test_features = feature_data[train_size:-1]  # Remove last entry
+    test_targets = target_data[train_size + 1 :]  # Shift by 1 to predict next timestep
 
     # Create TimeseriesGenerator for training and testing
     train_generator = TimeseriesGenerator(
@@ -162,16 +179,39 @@ def train(
         batch_size=batch_size,
     )
 
-    # Load the saved scalers
-    target_scaler = joblib.load(os.path.join(scalers_dir, "target_scaler.joblib"))
+    # Build and train model
+    model = Sequential(
+        [
+            LSTM(
+                units=lstm_units,
+                input_shape=(time_steps, len(features)),
+                return_sequences=True,
+            ),
+            Dropout(dropout_rate),
+            LSTM(units=lstm_units, return_sequences=False),
+            Dropout(dropout_rate),
+            Dense(units=dense_units, activation="relu"),
+            Dense(units=len(features)),  # Output layer predicts all features
+        ]
+    )
 
-    # Build model
-    model = Sequential()
-    model.add(LSTM(units=lstm_units, input_shape=(time_steps, len(features))))
-    model.add(Dropout(dropout_rate))
-    model.add(Dense(units=dense_units, activation="relu"))
-    model.add(Dense(units=len(targets)))
-    model.compile(optimizer="adam", loss="mean_squared_error")
+    # Create learning rate schedule
+    initial_learning_rate = learning_rate
+    decay_steps = len(train_generator)  # decay once per epoch
+    decay_rate = 0.9  # decay by 10% each time
+
+    lr_schedule = ExponentialDecay(
+        initial_learning_rate,
+        decay_steps=decay_steps,
+        decay_rate=decay_rate,
+        staircase=True,
+    )
+
+    # Use the schedule in the optimizer
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
+        loss="mean_squared_error",
+    )
 
     # Train model
     history = model.fit(
@@ -185,8 +225,10 @@ def train(
     y_pred = model.predict(test_generator)
     # Get the actual test targets, excluding the first time_steps samples
     y_test = test_targets[time_steps:]
-    y_test_inv = target_scaler.inverse_transform(y_test)
-    y_pred_inv = target_scaler.inverse_transform(y_pred)
+
+    # Use feature_scaler for inverse transform since we're predicting all features
+    y_test_inv = feature_scaler.inverse_transform(y_test)
+    y_pred_inv = feature_scaler.inverse_transform(y_pred)
 
     # Calculate metrics
     metrics = calculate_metrics(y_test_inv, y_pred_inv, history)
@@ -195,25 +237,23 @@ def train(
 
 
 def calculate_metrics(y_test_inv, y_pred_inv, history):
-    """Calculate and return all metrics."""
-    mse_temp = mean_squared_error(y_test_inv[:, 0], y_pred_inv[:, 0])
-    mae_temp = mean_absolute_error(y_test_inv[:, 0], y_pred_inv[:, 0])
-    r2_temp = r2_score(y_test_inv[:, 0], y_pred_inv[:, 0])
-
-    mse_precip = mean_squared_error(y_test_inv[:, 1], y_pred_inv[:, 1])
-    mae_precip = mean_absolute_error(y_test_inv[:, 1], y_pred_inv[:, 1])
-    r2_precip = r2_score(y_test_inv[:, 1], y_pred_inv[:, 1])
-
-    return {
+    """Calculate and return metrics for all features."""
+    metrics = {
         "final_train_loss": history.history["loss"][-1],
         "final_val_loss": history.history["val_loss"][-1],
-        "temperature_mse": mse_temp,
-        "temperature_mae": mae_temp,
-        "temperature_r2": r2_temp,
-        "precipitation_mse": mse_precip,
-        "precipitation_mae": mae_precip,
-        "precipitation_r2": r2_precip,
     }
+
+    # Calculate MSE, MAE, and R2 for each feature
+    for i, feature in enumerate(features):
+        mse = mean_squared_error(y_test_inv[:, i], y_pred_inv[:, i])
+        mae = mean_absolute_error(y_test_inv[:, i], y_pred_inv[:, i])
+        r2 = r2_score(y_test_inv[:, i], y_pred_inv[:, i])
+
+        metrics[f"{feature}_mse"] = mse
+        metrics[f"{feature}_mae"] = mae
+        metrics[f"{feature}_r2"] = r2
+
+    return metrics
 
 
 def save_and_log_plots(history):
@@ -238,12 +278,13 @@ def objective(trial):
     """Optuna objective function for hyperparameter optimization."""
     # Suggest hyperparameters
     params = {
-        "lstm_units": trial.suggest_int("lstm_units", 32, 256),
-        "dense_units": trial.suggest_int("dense_units", 16, 128),
-        "dropout_rate": trial.suggest_float("dropout_rate", 0.1, 0.5),
-        "batch_size": trial.suggest_int("batch_size", 16, 128),
-        "epochs": 5,
-        "time_steps": 72,
+        "lstm_units": trial.suggest_int("lstm_units", 64, 512),
+        "dense_units": trial.suggest_int("dense_units", 32, 256),
+        "dropout_rate": trial.suggest_float("dropout_rate", 0.1, 0.3),
+        "batch_size": trial.suggest_int("batch_size", 32, 256),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True),
+        "epochs": 10,
+        "time_steps": trial.suggest_int("time_steps", 24, 168),
         "train_size": 0.8,
     }
 
@@ -337,8 +378,8 @@ if __name__ == "__main__":
                 {
                     "time_steps": 24,
                     "train_size": 0.8,
-                    "lstm_units": 64,
-                    "dense_units": 32,
+                    "lstm_units": 128,
+                    "dense_units": 64,
                     "dropout_rate": 0.2,
                     "batch_size": 32,
                     "epochs": 20,
