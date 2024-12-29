@@ -4,7 +4,6 @@ LABEL org.opencontainers.image.source https://github.com/PGimenez/WeatherForecas
 
 RUN apt-get update && apt-get install -y \
     build-essential \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,4 +15,4 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-CMD ["python", "process_data.py"]
+CMD ["python", "train.py"]

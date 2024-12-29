@@ -31,14 +31,13 @@ from sklearn.preprocessing import MinMaxScaler
 # For reproducibility
 np.random.seed(42)
 
-# Enable Metal for M1 GPU
-try:
-    tf.config.experimental.set_visible_devices(
-        tf.config.list_physical_devices("GPU"), "GPU"
-    )
-    print("GPU acceleration enabled")
-except:
-    print("No GPU devices found. Running on CPU")
+# try:
+#     tf.config.experimental.set_visible_devices(
+#         tf.config.list_physical_devices("GPU"), "GPU"
+#     )
+#     print("GPU acceleration enabled")
+# except:
+#     print("No GPU devices found. Running on CPU")
 
 # Add MLflow setup after the imports
 # mlflow.create_experiment(
