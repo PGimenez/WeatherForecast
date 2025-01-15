@@ -33,7 +33,6 @@ A comprehensive machine learning pipeline for multi-feature weather forecasting 
 
 #### Model Serving
 - FastAPI REST API
-- Real-time predictions
 - Multi-model inference
 
 #### Frontend
